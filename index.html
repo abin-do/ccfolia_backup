@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>코코포리아 로그 변환기</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>코코포리아 로그 변환기</h1>
+    <ol class="stepper">
+      <li data-step="1" class="active">1. 로그 불러오기</li>
+      <li data-step="2">2. 화자 분류</li>
+      <li data-step="3">3. 꾸미기 · 내보내기</li>
+    </ol>
+  </header>
+
+  <main>
+    <!-- STEP 1 -->
+    <section id="step1" class="step">
+      <div class="card">
+        <h2>로그 HTML 불러오기</h2>
+        <p class="hint">코코포리아에서 내보낸 로그 파일(.html)을 올리거나, 파일 내용을 그대로 붙여넣으세요.</p>
+        <label class="drop" id="drop">
+          <input type="file" id="fileInput" accept=".html,.htm,text/html" hidden />
+          <span>여기를 눌러 파일을 고르거나, 파일을 끌어다 놓으세요</span>
+        </label>
+        <textarea id="pasteInput" rows="10" placeholder="또는 HTML 내용을 여기에 붙여넣기…"></textarea>
+        <div class="actions">
+          <span id="parseStatus" class="hint"></span>
+          <button id="parseBtn" class="primary">다음 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2 -->
+    <section id="step2" class="step" hidden>
+      <div class="navbar">
+        <button class="ghost" data-go="1">← 로그 다시 불러오기</button>
+        <button class="primary" data-go="3">꾸미기 · 내보내기 →</button>
+      </div>
+      <div class="card">
+        <h2>화자 분류</h2>
+        <p class="hint">
+          <b>인물</b>은 왼쪽에 얼굴, 오른쪽에 이름과 대사가 나와요. <b>굵은 지문</b>/<b>얇은 지문</b>은 이름 없이 가운데 정렬로 나오고, <b>제외</b>하면 출력하지 않아요.<br />
+          표시 이름과 이미지가 같은 인물(예: "타치바나 아야세"와 "아야세")은 한 사람으로 이어서 표시돼요.
+        </p>
+        <div id="charList" class="char-list"></div>
+        <div class="actions">
+          <button class="ghost" data-go="1">← 이전</button>
+          <button class="primary" data-go="3">다음 →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3 -->
+    <section id="step3" class="step" hidden>
+      <div class="navbar">
+        <button class="ghost" data-go="2">← 화자 분류 수정</button>
+        <button class="ghost" data-go="1">로그 다시 불러오기</button>
+      </div>
+      <div class="layout3">
+        <aside class="card options">
+          <h2>꾸미기</h2>
+          <div class="opt">
+            <label>테마 프리셋</label>
+            <div class="seg">
+              <button data-preset="light">밝게</button>
+              <button data-preset="dark">어둡게</button>
+            </div>
+          </div>
+          <div class="opt grid2">
+            <label>배경 <input type="color" id="o-bg" /></label>
+            <label>대사 <input type="color" id="o-text" /></label>
+            <label>지문 <input type="color" id="o-narr" /></label>
+            <label>괄호 <input type="color" id="o-dim" /></label>
+            <label>구분선 <input type="color" id="o-line" /></label>
+          </div>
+          <div class="opt">
+            <label>이름 색</label>
+            <select id="o-nameColor">
+              <option value="text">대사 색과 같게</option>
+              <option value="char">인물별 색 (2단계에서 설정)</option>
+            </select>
+          </div>
+          <div class="opt">
+            <label>얼굴 크기 <span id="o-avatarVal"></span></label>
+            <input type="range" id="o-avatar" min="40" max="100" step="4" />
+          </div>
+          <div class="opt">
+            <label>얼굴 모서리</label>
+            <select id="o-radius">
+              <option value="12">둥근 사각형</option>
+              <option value="50%">원형</option>
+              <option value="0">사각형</option>
+            </select>
+          </div>
+          <div class="opt">
+            <label>글자 크기 <span id="o-fontVal"></span></label>
+            <input type="range" id="o-font" min="12" max="20" step="1" />
+          </div>
+          <div class="opt checks">
+            <label><input type="checkbox" id="o-merge" /> 연속된 같은 인물 대사 합치기</label>
+            <label><input type="checkbox" id="o-dimParen" /> 대사 속 (괄호) 흐리게</label>
+            <label><input type="checkbox" id="o-dice" /> 판정 결과를 표로 보기</label>
+            <label><input type="checkbox" id="o-divider" /> 메시지 사이 구분선</label>
+          </div>
+          <div class="actions col">
+            <button class="primary" id="downloadBtn">HTML 파일 다운로드</button>
+            <button id="copyBtn">에디터용 코드 복사</button>
+            <button class="ghost" data-go="2">← 화자 분류로</button>
+          </div>
+          <p class="hint small">
+            복사한 코드는 에디터의 <b>HTML 모드</b>에 붙여넣으세요. 이미지를 파일로 올렸다면 코드 안에 이미지가 직접 들어가요(data URI). 에디터가 이런 이미지를 막으면 2단계에서 이미지 <b>주소(URL)</b>를 쓰세요.
+          </p>
+        </aside>
+        <div class="card preview-wrap">
+          <h2>미리보기 <span id="stats" class="hint"></span></h2>
+          <div id="preview" class="preview"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
