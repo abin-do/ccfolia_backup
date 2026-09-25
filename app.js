@@ -238,6 +238,7 @@ function resizeImage(file, size) {
 /* =========================================================
  * 출력 HTML 생성 (에디터 호환을 위해 인라인 스타일 + table)
  * ========================================================= */
+const FONT_FAMILY = "'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
 function formatText(text, dimColor) {
@@ -306,8 +307,9 @@ function resultColor(r) {
   return '#ffffff';
 }
 
-function diceCard(d) {
-  const cell = 'padding:0.5em 1.1em;border:0;border-top:1px solid #dcdce0;text-align:left;vertical-align:middle;';
+function diceCard(d, o) {
+  const size = `font-size:${Math.round(o.font * 0.95 * 10) / 10}px;font-family:${FONT_FAMILY};`;
+  const cell = `${size}padding:0.5em 1.1em;border:0;border-top:1px solid #dcdce0;text-align:left;vertical-align:middle;`;
   const label = `${cell}background:#ececef;color:#2b2b2e;font-weight:700;white-space:nowrap;border-right:1px solid #dcdce0;width:auto;`;
   const value = `${cell}background:#ffffff;color:#1d1d1f;min-width:8em;`;
   let rows = d.rows.map(([k, v]) => `<tr><td style="${label}">${esc(k)}:</td><td style="${value}">${esc(v)}</td></tr>`).join('');
@@ -316,15 +318,15 @@ function diceCard(d) {
   } else {
     rows += `<tr><td style="${label}">결과:</td><td style="${value}font-weight:700;">${esc(d.total)}</td></tr>`;
   }
-  return `<table border="0" cellpadding="0" cellspacing="0" style="width:auto;border-collapse:separate;border-spacing:0;border:1px solid #dcdce0;border-radius:0.8em;overflow:hidden;margin:0.3em 0;font-size:0.95em;line-height:1.4;">`
-    + `<tr><th colspan="2" style="padding:0.6em 1.1em;border:0;background:#1c1c1e;color:#ffffff;text-align:left;font-weight:700;">${esc(d.title)}</th></tr>`
+  return `<table border="0" cellpadding="0" cellspacing="0" style="width:auto;border-collapse:separate;border-spacing:0;border:1px solid #dcdce0;border-radius:0.8em;overflow:hidden;margin:0.3em 0;${size}line-height:1.4;">`
+    + `<tr><th colspan="2" style="${size}padding:0.6em 1.1em;border:0;background:#1c1c1e;color:#ffffff;text-align:left;font-weight:700;">${esc(d.title)}</th></tr>`
     + rows + '</table>';
 }
 
 function renderLine(m, isChar, o) {
   // 판정 표는 인물이 굴린 주사위에만 쓰고, 지문은 원문 그대로 둔다
   const d = isChar && o.dice ? parseDice(m.text) : null;
-  if (d) return diceCard(d);
+  if (d) return diceCard(d, o);
   return formatText(m.text, isChar && o.dimParen ? o.dim : '');
 }
 
@@ -353,6 +355,8 @@ function buildBlocks() {
 
 function renderOutput() {
   const o = state.opts;
+  // 에디터(특히 quirks 모드)에서는 표 안 글자가 바깥 글자 크기를 물려받지 않으므로 칸마다 직접 지정
+  const font = `font-size:${o.font}px;font-family:${FONT_FAMILY};`;
   const S = +o.avatar;
   const radius = o.radius.endsWith('%') ? o.radius : `${o.radius}px`;
   const border = o.divider ? `border-bottom:1px solid ${o.line};` : '';
@@ -366,7 +370,7 @@ function renderOutput() {
         ? `<img src="${esc(c.img)}" alt="${esc(c.display)}" width="${S}" height="${S}" style="width:${S}px;height:${S}px;border-radius:${radius};object-fit:cover;display:block;">`
         : `<div style="width:${S}px;height:${S}px;"></div>`;
       const lines = b.lines.map((m, i) => `<div style="margin:${i ? '0.25em' : '0'} 0 0;padding:0;line-height:1.6;text-align:left;">${renderLine(m, true, o)}</div>`).join('');
-      const td = 'border:0;vertical-align:top;text-align:left;background:transparent;';
+      const td = `border:0;vertical-align:top;text-align:left;background:transparent;color:${o.text};${font}`;
       return `<table border="0" cellpadding="0" cellspacing="0" style="width:100%;margin:0;border:0;border-collapse:collapse;background:transparent;${border}"><tr>`
         + `<td style="${td}width:${S}px;padding:0.8em 0 0.8em 1.4em;">${face}</td>`
         + `<td style="${td}padding:0.8em 1.4em 0.8em 1em;">`
@@ -374,10 +378,10 @@ function renderOutput() {
         + lines + '</td></tr></table>';
     }
     const weight = b.type === 'bold' ? '700' : '400';
-    return `<div style="text-align:center;margin:0;padding:0.7em 1.4em;line-height:1.6;color:${o.narr};font-weight:${weight};${border}">${renderLine(b.lines[0], false, o)}</div>`;
+    return `<div style="text-align:center;margin:0;padding:0.7em 1.4em;line-height:1.6;${font}color:${o.narr};font-weight:${weight};${border}">${renderLine(b.lines[0], false, o)}</div>`;
   }).join('\n');
 
-  const body = `<div style="background:${o.bg};color:${o.text};font-size:${o.font}px;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere;">\n${html}\n</div>`;
+  const body = `<div style="background:${o.bg};color:${o.text};${font}word-break:keep-all;overflow-wrap:anywhere;">\n${html}\n</div>`;
   return { body, count: blocks.length };
 }
 
