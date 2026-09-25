@@ -5,7 +5,7 @@
  * ========================================================= */
 const TYPES = { char: '인물', bold: '굵은 지문', thin: '얇은 지문', skip: '제외' };
 const STORE_KEY = 'ccfolia-log-converter:chars';
-const OPT_KEY = 'ccfolia-log-converter:opts';
+const OPT_KEY = 'ccfolia-log-converter:opts-v2';
 
 const PRESETS = {
   light: { bg: '#ffffff', text: '#1f1f1f', narr: '#1f1f1f', dim: '#8a8a8e', line: '#e6e6e9' },
@@ -15,9 +15,9 @@ const PRESETS = {
 const DEFAULT_OPTS = {
   ...PRESETS.light,
   nameColor: 'text',
-  avatar: 64,
+  avatar: 48,
   radius: '12',
-  font: 15,
+  font: 10,
   merge: true,
   dimParen: true,
   dice: true,
@@ -307,17 +307,17 @@ function resultColor(r) {
 }
 
 function diceCard(d) {
-  const cell = 'padding:9px 16px;border-top:1px solid #dcdce0;text-align:left;';
-  const label = `${cell}background:#ececef;color:#2b2b2e;font-weight:700;white-space:nowrap;border-right:1px solid #dcdce0;`;
-  const value = `${cell}background:#ffffff;color:#1d1d1f;min-width:120px;`;
+  const cell = 'padding:0.5em 1.1em;border:0;border-top:1px solid #dcdce0;text-align:left;vertical-align:middle;';
+  const label = `${cell}background:#ececef;color:#2b2b2e;font-weight:700;white-space:nowrap;border-right:1px solid #dcdce0;width:auto;`;
+  const value = `${cell}background:#ffffff;color:#1d1d1f;min-width:8em;`;
   let rows = d.rows.map(([k, v]) => `<tr><td style="${label}">${esc(k)}:</td><td style="${value}">${esc(v)}</td></tr>`).join('');
   if (d.result) {
     rows += `<tr><td style="${label}">판정결과:</td><td style="${value}background:${resultColor(d.result)};font-weight:700;">${esc(d.result)}</td></tr>`;
   } else {
     rows += `<tr><td style="${label}">결과:</td><td style="${value}font-weight:700;">${esc(d.total)}</td></tr>`;
   }
-  return `<table style="border-collapse:separate;border-spacing:0;border:1px solid #dcdce0;border-radius:12px;overflow:hidden;margin:6px 0;font-size:0.95em;line-height:1.4;">`
-    + `<tr><th colspan="2" style="padding:10px 16px;background:#1c1c1e;color:#ffffff;text-align:left;font-weight:700;">${esc(d.title)}</th></tr>`
+  return `<table border="0" cellpadding="0" cellspacing="0" style="width:auto;border-collapse:separate;border-spacing:0;border:1px solid #dcdce0;border-radius:0.8em;overflow:hidden;margin:0.3em 0;font-size:0.95em;line-height:1.4;">`
+    + `<tr><th colspan="2" style="padding:0.6em 1.1em;border:0;background:#1c1c1e;color:#ffffff;text-align:left;font-weight:700;">${esc(d.title)}</th></tr>`
     + rows + '</table>';
 }
 
@@ -365,15 +365,16 @@ function renderOutput() {
       const face = c.img
         ? `<img src="${esc(c.img)}" alt="${esc(c.display)}" width="${S}" height="${S}" style="width:${S}px;height:${S}px;border-radius:${radius};object-fit:cover;display:block;">`
         : `<div style="width:${S}px;height:${S}px;"></div>`;
-      const lines = b.lines.map((m, i) => `<div style="margin:${i ? '8px' : '0'} 0 0;line-height:1.75;">${renderLine(m, true, o)}</div>`).join('');
-      return `<table style="width:100%;border-collapse:collapse;${border}"><tr>`
-        + `<td style="width:${S}px;vertical-align:top;padding:18px 0 18px 22px;">${face}</td>`
-        + `<td style="vertical-align:top;padding:18px 22px 18px 16px;">`
-        + `<div style="font-weight:700;font-size:1.05em;color:${nameColor};margin-bottom:6px;">${esc(c.display)}</div>`
+      const lines = b.lines.map((m, i) => `<div style="margin:${i ? '0.25em' : '0'} 0 0;padding:0;line-height:1.6;text-align:left;">${renderLine(m, true, o)}</div>`).join('');
+      const td = 'border:0;vertical-align:top;text-align:left;background:transparent;';
+      return `<table border="0" cellpadding="0" cellspacing="0" style="width:100%;margin:0;border:0;border-collapse:collapse;background:transparent;${border}"><tr>`
+        + `<td style="${td}width:${S}px;padding:0.8em 0 0.8em 1.4em;">${face}</td>`
+        + `<td style="${td}padding:0.8em 1.4em 0.8em 1em;">`
+        + `<div style="font-weight:700;font-size:1.05em;color:${nameColor};margin:0 0 0.15em;text-align:left;">${esc(c.display)}</div>`
         + lines + '</td></tr></table>';
     }
     const weight = b.type === 'bold' ? '700' : '400';
-    return `<div style="text-align:center;padding:16px 22px;line-height:1.75;color:${o.narr};font-weight:${weight};${border}">${renderLine(b.lines[0], false, o)}</div>`;
+    return `<div style="text-align:center;margin:0;padding:0.7em 1.4em;line-height:1.6;color:${o.narr};font-weight:${weight};${border}">${renderLine(b.lines[0], false, o)}</div>`;
   }).join('\n');
 
   const body = `<div style="background:${o.bg};color:${o.text};font-size:${o.font}px;font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;word-break:keep-all;overflow-wrap:anywhere;">\n${html}\n</div>`;
