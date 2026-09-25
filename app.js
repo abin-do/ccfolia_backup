@@ -338,7 +338,7 @@ function buildBlocks() {
     const c = state.chars[m.name];
     if (!c || c.type === 'skip') { continue; }
     if (c.type === 'char') {
-      const key = `${c.display}\u0000${c.img}`;
+      const key = m.name;
       if (o.merge && cur && cur.key === key) {
         cur.lines.push(m);
       } else {
