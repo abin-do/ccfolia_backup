@@ -32,6 +32,15 @@
           <button id="parseBtn" class="primary">다음 →</button>
         </div>
       </div>
+      <div class="card settings-card">
+        <h2>설정 파일</h2>
+        <p class="hint">화자 분류, 분류 카드, 꾸미기, 내 글꼴을 파일 하나로 저장해 두었다가 다음에 불러와 그대로 쓸 수 있습니다.</p>
+        <input type="file" id="settingsInput" accept=".json,application/json" hidden />
+        <div class="actions start">
+          <button data-settings-load>설정 파일 불러오기</button>
+          <button class="ghost" data-settings-save>지금 설정 저장</button>
+        </div>
+      </div>
     </section>
 
     <!-- STEP 2 -->
@@ -123,12 +132,14 @@
               <button class="small" id="fontAddBtn">+ 글꼴 추가</button>
             </div>
             <div id="fontAdd" class="font-add" hidden>
-              <input type="text" id="fontAddName" maxlength="60" placeholder="글꼴 이름 (예: 나눔스퀘어, KoPubWorld바탕체)" />
+              <label class="fa-label" for="fontAddSrc">웹폰트 주소 또는 코드</label>
+              <textarea id="fontAddSrc" rows="3" spellcheck="false" placeholder="https://fonts.googleapis.com/css2?family=Hahmlet&amp;display=swap&#10;또는 .woff2 · .woff · .ttf 파일 주소&#10;또는 눈누에서 복사한 @font-face 코드"></textarea>
+              <p class="hint small tight" id="fontAddInfo"></p>
               <div class="font-add-row">
+                <label class="grow">이름 <input type="text" id="fontAddName" maxlength="60" placeholder="자동으로 채워집니다" /></label>
                 <label>종류 <select id="fontAddGroup"></select></label>
-                <label class="chk"><input type="checkbox" id="fontAddWeb" /> 구글 폰트에서 불러오기</label>
               </div>
-              <p class="hint small tight">종류는 그 글꼴이 없는 컴퓨터에서 대신 보여 줄 모양입니다. 구글 폰트는 fonts.google.com에 적힌 이름 그대로 넣으십시오.</p>
+              <p class="hint small tight">종류는 글꼴을 불러오지 못했을 때 대신 보여 줄 모양입니다. 글꼴 파일 주소나 @font-face 코드를 넣었다면 이름은 마음대로 바꿔도 됩니다.</p>
               <div class="actions">
                 <button class="small ghost" id="fontAddCancel">취소</button>
                 <button class="small primary" id="fontAddOk">추가</button>
@@ -137,7 +148,7 @@
             <div id="userFonts" class="user-fonts"></div>
             <div id="fontSample" class="font-sample">가나다라 ABC 123 · 예시 대사입니다.</div>
             <p class="hint small tight">보는 사람의 컴퓨터에 그 글꼴이 있어야 보입니다. 없으면 같은 종류의 기본 글꼴로 나옵니다.</p>
-            <p class="hint small tight" id="o-fontNote" hidden>이 글꼴은 <b>HTML 파일 다운로드</b>에는 함께 들어가지만, 복사한 코드는 에디터가 글꼴을 지원해야 보입니다.</p>
+            <p class="hint small tight" id="o-fontNote" hidden>이 웹폰트는 <b>HTML 파일 다운로드</b>에는 불러오는 코드가 함께 들어갑니다. 복사한 코드와 txt에는 들어가지 않으므로, 에디터 쪽에 같은 글꼴이 있어야 보입니다.</p>
           </div>
           <p class="hint small tight">대사·지문·괄호 색은 기본색입니다. 분류마다 다른 색을 쓰려면 2단계 분류 설정에서 고르십시오.</p>
           <div class="opt checks">
@@ -149,6 +160,7 @@
             <button class="primary" id="downloadBtn">HTML 파일 다운로드</button>
             <button id="copyBtn">HTML 코드 복사</button>
             <button id="txtBtn">HTML txt 다운로드</button>
+            <button class="ghost" data-settings-save title="화자 분류·분류 카드·꾸미기·내 글꼴을 파일로 저장">설정 파일 저장</button>
             <button class="ghost" data-go="2">← 화자 분류로</button>
           </div>
           <p class="hint small">

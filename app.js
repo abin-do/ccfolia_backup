@@ -87,7 +87,7 @@ const state = {
   names: [],      // 등장 순서대로 화자 이름
   chars: {},      // name -> {type, display, color, img}
   types: [],      // 분류 목록 (BASE_TYPE 모양 + id)
-  userFonts: [],  // 사용자가 추가한 글꼴 {id, name, label, group, google}
+  userFonts: [],  // 사용자가 추가한 글꼴 {id, name, label, group, css?: CSS 주소, faces?: [{srcs:[{url, format}], weight, style}]}
   charFilter: 'all', // 2단계 화자 목록 보기: all | char | narr | skip
   editingType: null, // 2단계에서 설정 창이 열린 분류 id
   opts: { ...DEFAULT_OPTS },
@@ -743,22 +743,124 @@ function fontStack(o) {
   const name = cleanFontName(f.name);
   return name ? `'${name}',${stack}` : stack;
 }
-/** 구글 폰트에서 받을 수 있는 글꼴이면 불러올 주소 */
-function webFontUrl(o) {
-  const f = fontById(o.fontFamily);
-  const suffix = f.google ? '' : f.web;
-  if (suffix === undefined || !cleanFontName(f.name)) return '';
-  return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(cleanFontName(f.name)).replace(/%20/g, '+')}${suffix}&display=swap`;
+/* ---------- 웹 글꼴 ---------- */
+/** CSS에 그대로 넣어도 안전한 주소만 받는다 (따옴표·괄호·꺾쇠가 없는 http(s) 주소) */
+const SAFE_URL = /^https?:\/\/[^\s"'()<>\\]+$/i;
+const SAFE_CSS_WORD = /^[\w\s.%-]{1,40}$/;
+const googleCssUrl = (name, suffix) => `https://fonts.googleapis.com/css2?family=${encodeURIComponent(name).replace(/%20/g, '+')}${suffix}&display=swap`;
+
+/** 글꼴을 쓰려면 불러와야 하는 것: CSS 주소(links)와 직접 만든 @font-face(css) */
+function fontAssets(f) {
+  const name = f && cleanFontName(f.name);
+  if (!name) return { links: [], css: '' };
+  const links = [];
+  if (f.web !== undefined) links.push(googleCssUrl(name, f.web)); // 기본 목록의 구글 폰트
+  if (f.google) links.push(googleCssUrl(name, ''));                // 예전 버전의 '구글 폰트에서 불러오기'
+  if (f.css && SAFE_URL.test(f.css)) links.push(f.css);
+  const css = (f.faces || []).map((face) => {
+    const srcs = (face.srcs || []).filter((s) => SAFE_URL.test(s.url))
+      .map((s) => `url('${s.url}')${s.format && /^[\w-]+$/.test(s.format) ? ` format('${s.format}')` : ''}`);
+    if (!srcs.length) return '';
+    const weight = SAFE_CSS_WORD.test(face.weight || '') ? face.weight : 'normal';
+    const style = SAFE_CSS_WORD.test(face.style || '') ? face.style : 'normal';
+    return `@font-face{font-family:'${name}';src:${srcs.join(',')};font-weight:${weight};font-style:${style};font-display:swap;}`;
+  }).filter(Boolean).join('\n');
+  return { links, css };
 }
-/** 미리보기에서도 보이도록 변환기 화면에 웹 글꼴을 불러온다 */
-function ensureWebFont(o) {
-  const href = webFontUrl(o);
-  if (!href || document.querySelector(`link[data-webfont="${href}"]`)) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = href;
-  link.dataset.webfont = href;
-  document.head.append(link);
+const hasWebFont = (o) => { const a = fontAssets(fontById(o.fontFamily)); return !!(a.links.length || a.css); };
+
+/** 내려받는 HTML의 <head>에 넣을 글꼴 코드 */
+function fontHeadHtml(o) {
+  const { links, css } = fontAssets(fontById(o.fontFamily));
+  return links.map((h) => `<link rel="stylesheet" href="${esc(h)}">\n`).join('') + (css ? `<style>\n${css}\n</style>\n` : '');
+}
+
+/** 변환기 화면에도 글꼴을 불러와 미리보기와 글꼴 목록에서 보이게 한다 */
+function ensureFontLoaded(f) {
+  const { links, css } = fontAssets(f);
+  for (const href of links) {
+    if ([...document.querySelectorAll('link[data-webfont]')].some((l) => l.dataset.webfont === href)) continue;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.dataset.webfont = href;
+    document.head.append(link);
+  }
+  if (css) {
+    const key = `face:${f.id}`;
+    let style = [...document.querySelectorAll('style[data-webfont]')].find((s) => s.dataset.webfont === key);
+    if (!style) {
+      style = document.createElement('style');
+      style.dataset.webfont = key;
+      document.head.append(style);
+    }
+    style.textContent = css;
+  }
+}
+const ensureWebFont = (o) => ensureFontLoaded(fontById(o.fontFamily));
+
+/**
+ * 붙여넣은 글자를 해석한다.
+ *  - @font-face 코드 (눈누 등) → 글꼴 파일 목록
+ *  - <link href="..."> / @import url(...) / CSS 주소 → CSS 주소
+ *  - .woff2 · .woff · .ttf · .otf 주소 → 글꼴 파일
+ * 돌려주는 값: {kind: 'css'|'faces', name, css?, faces?} 또는 {error}
+ */
+function parseFontSource(src) {
+  src = String(src || '').trim();
+  if (!src) return null;
+  const fmtOf = (url) => ({ woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' }[(url.split(/[?#]/)[0].match(/\.(\w+)$/) || [])[1]?.toLowerCase()] || '');
+  const clean = (url) => url.trim().replace(/&amp;/g, '&');
+
+  const faces = [];
+  let name = '';
+  let dropped = 0;
+  for (const block of src.matchAll(/@font-face\s*\{([^}]*)\}/gi)) {
+    const body = block[1];
+    const fam = body.match(/font-family\s*:\s*(['"]?)([^;'"]+)\1/i);
+    if (fam && !name) name = fam[2].trim();
+    const srcDecl = (body.match(/src\s*:\s*([^;]+)/i) || [])[1] || '';
+    const srcs = [];
+    for (const u of srcDecl.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)(?:\s*format\(\s*(['"]?)([^'")]+)\3\s*\))?/gi)) {
+      const url = clean(u[2]);
+      if (SAFE_URL.test(url)) srcs.push({ url, format: u[4] || fmtOf(url) });
+      else dropped++;
+    }
+    if (!srcs.length) continue;
+    const weight = ((body.match(/font-weight\s*:\s*([^;]+)/i) || [])[1] || '').trim();
+    const style = ((body.match(/font-style\s*:\s*([^;]+)/i) || [])[1] || '').trim();
+    faces.push({ srcs, weight: SAFE_CSS_WORD.test(weight) ? weight : '', style: SAFE_CSS_WORD.test(style) ? style : '' });
+  }
+  if (faces.length) return { kind: 'faces', name, faces };
+  if (/@font-face/i.test(src)) return { error: dropped ? '글꼴 파일 주소는 https://로 시작하는 전체 주소여야 합니다' : '@font-face 코드에서 글꼴 파일 주소를 찾지 못했습니다' };
+
+  const m = src.match(/<link[^>]+href\s*=\s*(['"])([^'"]+)\1/i) || src.match(/@import\s+(?:url\(\s*)?(['"]?)([^'")\s;]+)\1/i);
+  const url = clean(m ? m[2] : src);
+  if (!SAFE_URL.test(url)) return { error: '주소는 https://로 시작해야 하고, 띄어쓰기나 따옴표가 없어야 합니다' };
+
+  if (fmtOf(url)) {
+    let file = url.split(/[?#]/)[0].split('/').pop().replace(/\.\w+$/, '');
+    try { file = decodeURIComponent(file); } catch { /* 그대로 */ }
+    return { kind: 'faces', name: file, faces: [{ srcs: [{ url, format: fmtOf(url) }], weight: '', style: '' }] };
+  }
+  // 구글 폰트 주소면 family= 에서 이름을 꺼낸다
+  let family = '';
+  try {
+    const u = new URL(url);
+    if (/fonts\.googleapis\.com$/i.test(u.hostname)) family = (u.searchParams.get('family') || '').split(':')[0].replace(/\+/g, ' ');
+  } catch { /* 이름은 사용자가 적는다 */ }
+  return { kind: 'css', name: family, css: url };
+}
+
+/** CSS 주소 안의 font-family 이름을 읽어 온다 (서버가 막으면 빈 문자열) */
+async function fetchCssFamily(url) {
+  try {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return '';
+    const text = await res.text();
+    const m = text.match(/font-family\s*:\s*(['"]?)([^;'"]+)\1/i);
+    return m ? m[2].trim() : '';
+  } catch { return ''; }
 }
 
 function formatText(text, dimColor) {
@@ -926,6 +1028,8 @@ const NUM_OPTS = {
 };
 const CHECK_OPTS = ['merge', 'dice', 'divider'];
 
+let syncOptionsUI = () => {}; // 설정 파일을 불러온 뒤 3단계 입력칸을 새 값으로 맞출 때 쓴다
+
 function bindOptions() {
   const o = state.opts;
   const colorIds = ['bg', 'text', 'narr', 'dim', 'line'];
@@ -941,7 +1045,7 @@ function bindOptions() {
     }
     fillFontSelect();
     $('#fontSample').style.fontFamily = fontStack(o);
-    $('#o-fontNote').hidden = !webFontUrl(o);
+    $('#o-fontNote').hidden = !hasWebFont(o);
     for (const k of CHECK_OPTS) $(`#o-${k}`).checked = o[k];
   };
   const update = () => { saveJSON(OPT_KEY, o); sync(); ensureWebFont(o); refreshStep3(); };
@@ -972,6 +1076,8 @@ function bindOptions() {
     Object.assign(o, PRESETS[btn.dataset.preset]);
     update();
   }));
+  state.userFonts.forEach(ensureFontLoaded);
+  syncOptionsUI = sync;
   sync();
   ensureWebFont(o);
 }
@@ -999,7 +1105,8 @@ function fillFontSelect() {
     chip.innerHTML = '<span class="nm"></span><span class="gp"></span><button class="link x" title="이 글꼴 지우기">×</button>';
     chip.querySelector('.nm').textContent = f.label;
     chip.querySelector('.nm').style.fontFamily = `'${cleanFontName(f.name)}',${FONT_GROUPS[f.group].stack}`;
-    chip.querySelector('.gp').textContent = FONT_GROUPS[f.group].label + (f.google ? ' · 구글' : '');
+    chip.querySelector('.gp').textContent = FONT_GROUPS[f.group].label + (f.css || f.faces || f.google ? ' · 웹폰트' : '');
+    chip.title = f.css || (f.faces && f.faces[0] && f.faces[0].srcs[0].url) || '설치된 글꼴';
     chip.querySelector('.x').addEventListener('click', () => removeUserFont(f));
     chips.append(chip);
   }
@@ -1007,17 +1114,20 @@ function fillFontSelect() {
 
 function saveUserFonts() { saveJSON(FONT_KEY, state.userFonts); }
 
-function addUserFont(name, group, google) {
+/** 내 글꼴에 넣는다. source는 {css} 또는 {faces}, 없으면 설치된 글꼴 */
+function addUserFont(name, group, source = {}) {
   name = cleanFontName(name);
   if (!name) return null;
   const id = `user:${name}`;
+  const data = { group, css: source.css || '', faces: source.faces || null };
   let f = state.userFonts.find((x) => x.id === id);
-  if (f) Object.assign(f, { group, google });
+  if (f) { Object.assign(f, data); delete f.google; }
   else {
-    f = { id, name, label: name, group, google };
+    f = { id, name, label: name, ...data };
     state.userFonts.push(f);
   }
   saveUserFonts();
+  ensureFontLoaded(f);
   return f;
 }
 
@@ -1029,33 +1139,72 @@ function removeUserFont(f) {
   saveJSON(OPT_KEY, state.opts);
   fillFontSelect();
   $('#fontSample').style.fontFamily = fontStack(state.opts);
-  $('#o-fontNote').hidden = !webFontUrl(state.opts);
+  $('#o-fontNote').hidden = !hasWebFont(state.opts);
   refreshStep3();
 }
 
 function bindFontAdd(update) {
   const box = $('#fontAdd');
+  const src = $('#fontAddSrc');
+  const nameIn = $('#fontAddName');
+  const info = $('#fontAddInfo');
   const groupSel = $('#fontAddGroup');
   for (const [key, g] of Object.entries(FONT_GROUPS)) groupSel.add(new Option(g.label, key));
+
+  let parsed = null;
+  let nameTouched = false; // 이름을 직접 고쳤으면 자동으로 덮어쓰지 않는다
+  let lookup = 0;
+  const setName = (n) => { if (!nameTouched && n) nameIn.value = n; };
+  const describe = () => {
+    parsed = parseFontSource(src.value);
+    info.classList.toggle('err', !!(parsed && parsed.error));
+    if (!parsed) { info.textContent = ''; return; }
+    if (parsed.error) { info.textContent = parsed.error; return; }
+    if (parsed.kind === 'faces') {
+      const n = parsed.faces.length;
+      info.textContent = n > 1 ? `글꼴 파일 ${n}개(굵기별)를 찾았습니다.` : '글꼴 파일 주소로 알아봤습니다.';
+      setName(parsed.name);
+      return;
+    }
+    info.textContent = 'CSS 주소로 알아봤습니다. 이름은 그 CSS 안의 font-family와 같아야 합니다.';
+    if (parsed.name) { setName(parsed.name); return; }
+    // 구글 폰트가 아니면 CSS를 읽어서 이름을 찾아본다
+    const my = ++lookup;
+    fetchCssFamily(parsed.css).then((family) => {
+      if (my !== lookup) return;
+      if (family) setName(family);
+      else if (!nameIn.value) info.textContent = 'CSS 주소로 알아봤습니다. 글꼴 이름을 CSS의 font-family와 똑같이 적어 주십시오.';
+    });
+  };
+
   const close = () => { box.hidden = true; $('#fontAddBtn').hidden = false; };
   $('#fontAddBtn').addEventListener('click', () => {
     box.hidden = false;
     $('#fontAddBtn').hidden = true;
-    $('#fontAddName').value = '';
-    $('#fontAddWeb').checked = false;
-    $('#fontAddName').focus();
+    src.value = '';
+    nameIn.value = '';
+    nameTouched = false;
+    describe();
+    src.focus();
   });
   $('#fontAddCancel').addEventListener('click', close);
+  src.addEventListener('input', describe);
+  nameIn.addEventListener('input', () => { nameTouched = !!nameIn.value; });
+
   const ok = () => {
-    const f = addUserFont($('#fontAddName').value, groupSel.value, $('#fontAddWeb').checked);
-    if (!f) { toast('글꼴 이름을 적어 주십시오'); $('#fontAddName').focus(); return; }
+    describe();
+    if (!parsed) { toast('웹폰트 주소나 코드를 넣어 주십시오'); src.focus(); return; }
+    if (parsed.error) { toast(parsed.error); src.focus(); return; }
+    const name = cleanFontName(nameIn.value) || parsed.name;
+    if (!cleanFontName(name)) { toast('글꼴 이름을 적어 주십시오'); nameIn.focus(); return; }
+    const f = addUserFont(name, groupSel.value, parsed.kind === 'css' ? { css: parsed.css } : { faces: parsed.faces });
     state.opts.fontFamily = f.id;
     close();
     update();
     toast(`'${f.label}' 글꼴을 추가했습니다`);
   };
   $('#fontAddOk').addEventListener('click', ok);
-  $('#fontAddName').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) ok(); });
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) ok(); });
 }
 
 function renderPreview() {
@@ -1264,11 +1413,149 @@ function bindEditor() {
   });
 }
 
+/* ---------- 설정 파일 (화자 분류 · 분류 카드 · 꾸미기 · 내 글꼴) ---------- */
+const SETTINGS_APP = 'ccfolia-log-converter';
+
+function exportSettings() {
+  // 지금 로그의 화자 + 예전 로그에서 저장해 둔 화자를 모두 담는다
+  const chars = { ...(loadJSON(STORE_KEY) || {}), ...state.chars };
+  const data = {
+    app: SETTINGS_APP,
+    version: 1,
+    savedAt: new Date().toISOString(),
+    opts: state.opts,
+    types: state.types,
+    fonts: state.userFonts,
+    chars,
+  };
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  saveFile(JSON.stringify(data, null, 2), `코코포리아변환기_설정_${stamp}.json`, 'application/json');
+  toast(`설정을 저장했습니다 (화자 ${Object.keys(chars).length}명, 분류 ${state.types.length}개)`);
+}
+
+const str = (v, max = 200) => (typeof v === 'string' ? v.slice(0, max) : '');
+const hex = (v, fallback) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v.toLowerCase() : fallback);
+
+/** 파일 내용을 앱이 쓰는 모양으로 다듬는다. 모르는 값은 버리고 기본값을 쓴다 */
+function readSettings(data) {
+  if (!data || data.app !== SETTINGS_APP) throw new Error('이 변환기에서 저장한 설정 파일이 아닙니다');
+
+  const opts = { ...DEFAULT_OPTS };
+  const src = data.opts && typeof data.opts === 'object' ? data.opts : {};
+  for (const k of ['bg', 'text', 'narr', 'dim', 'line']) opts[k] = hex(src[k], DEFAULT_OPTS[k]);
+  if (['text', 'char'].includes(src.nameColor)) opts.nameColor = src.nameColor;
+  if (['12', '50%', '0'].includes(src.radius)) opts.radius = src.radius;
+  for (const [k, { min, max }] of Object.entries(NUM_OPTS)) {
+    if (Number.isFinite(+src[k])) opts[k] = Math.min(max, Math.max(min, +src[k]));
+  }
+  for (const k of CHECK_OPTS) if (typeof src[k] === 'boolean') opts[k] = src[k];
+  opts.fontFamily = str(src.fontFamily, 80);
+
+  const fonts = (Array.isArray(data.fonts) ? data.fonts : [])
+    .filter((f) => f && FONT_GROUPS[f.group] && cleanFontName(f.name))
+    .map((f) => {
+      const name = cleanFontName(f.name).slice(0, 60);
+      const faces = Array.isArray(f.faces) ? f.faces.map((face) => ({
+        srcs: (Array.isArray(face && face.srcs) ? face.srcs : [])
+          .filter((s) => s && SAFE_URL.test(s.url || ''))
+          .map((s) => ({ url: s.url, format: /^[\w-]+$/.test(s.format || '') ? s.format : '' })),
+        weight: SAFE_CSS_WORD.test((face && face.weight) || '') ? face.weight : '',
+        style: SAFE_CSS_WORD.test((face && face.style) || '') ? face.style : '',
+      })).filter((face) => face.srcs.length) : null;
+      return {
+        id: `user:${name}`, name, label: name, group: f.group,
+        css: SAFE_URL.test(f.css || '') ? f.css : '',
+        faces: faces && faces.length ? faces : null,
+        ...(f.google ? { google: true } : {}),
+      };
+    });
+
+  const types = (Array.isArray(data.types) ? data.types : [])
+    .filter((t) => t && typeof t.id === 'string' && t.id && t.id !== SKIP)
+    .map((t) => ({
+      ...BASE_TYPE,
+      id: t.id.slice(0, 40),
+      label: str(t.label, 30),
+      kind: t.kind === 'char' ? 'char' : 'narr',
+      bold: !!t.bold, italic: !!t.italic, underline: !!t.underline, strike: !!t.strike,
+      align: ['left', 'center', 'right'].includes(t.align) ? t.align : '',
+      color: hex(t.color, ''),
+      size: Number.isFinite(+t.size) ? Math.min(300, Math.max(50, +t.size)) : 100,
+      dimParen: !!t.dimParen,
+      parenColor: hex(t.parenColor, ''),
+    }));
+  if (!types.length) throw new Error('설정 파일에 분류가 없습니다');
+
+  const chars = {};
+  const srcChars = data.chars && typeof data.chars === 'object' ? data.chars : {};
+  for (const [name, c] of Object.entries(srcChars)) {
+    if (!c || typeof c !== 'object') continue;
+    const img = str(c.img, 2_000_000);
+    chars[name] = {
+      type: str(c.type, 40) || 'thin',
+      display: str(c.display, 100) || name,
+      color: hex(c.color, '#333333'),
+      // 이미지는 주소나 이 변환기가 만든 data URI만 받는다
+      img: /^(https?:\/\/|data:image\/(webp|png|jpeg|gif);base64,)/i.test(img) ? img : '',
+    };
+  }
+  return { opts, fonts, types, chars };
+}
+
+function applySettings(s) {
+  state.types = s.types;
+  state.userFonts = s.fonts;
+  state.opts = Object.assign(state.opts, s.opts); // bindOptions가 쥔 객체를 그대로 쓴다
+  if (!allFonts().some((f) => f.id === state.opts.fontFamily)) state.opts.fontFamily = '';
+  state.editingType = null;
+
+  // 분류가 바뀌었을 수 있으니 화자 분류를 새 분류 목록에 맞춘다
+  for (const c of Object.values(s.chars)) c.type = resolveType(c.type);
+  const saved = loadJSON(STORE_KEY) || {};
+  saveJSON(STORE_KEY, { ...saved, ...s.chars });
+  for (const name of state.names) {
+    if (s.chars[name]) state.chars[name] = { ...s.chars[name] };
+    else if (state.chars[name]) state.chars[name].type = resolveType(state.chars[name].type);
+  }
+
+  saveTypes();
+  saveUserFonts();
+  saveJSON(OPT_KEY, state.opts);
+  state.userFonts.forEach(ensureFontLoaded);
+  ensureWebFont(state.opts);
+  syncOptionsUI();
+  if (state.messages.length) renderStep2();
+  refreshStep3();
+}
+
+function importSettings(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let s;
+    try {
+      s = readSettings(JSON.parse(reader.result));
+    } catch (e) {
+      toast(e instanceof SyntaxError ? '설정 파일을 읽지 못했습니다 (JSON 형식이 아닙니다)' : e.message);
+      return;
+    }
+    const n = Object.keys(s.chars).length;
+    if (!confirm(`설정 파일을 불러오면 지금의 분류 카드, 꾸미기, 내 글꼴이 파일 내용으로 바뀝니다. 화자 ${n}명의 설정도 함께 들어옵니다. 불러오시겠습니까?`)) return;
+    applySettings(s);
+    const matched = state.names.filter((name) => s.chars[name]).length;
+    toast(state.names.length
+      ? `설정을 불러왔습니다. 지금 로그의 화자 ${state.names.length}명 중 ${matched}명에게 적용했습니다`
+      : `설정을 불러왔습니다 (화자 ${n}명, 분류 ${s.types.length}개). 로그를 불러오면 적용됩니다`);
+  };
+  reader.onerror = () => toast('설정 파일을 읽지 못했습니다');
+  reader.readAsText(file, 'utf-8');
+}
+
 /* ---------- 내보내기 ---------- */
 function download() {
   const { body } = renderOutput();
-  const href = webFontUrl(state.opts);
-  const fontLink = href ? `<link rel="stylesheet" href="${esc(href)}">\n` : '';
+  const fontLink = fontHeadHtml(state.opts);
   const page = `<!DOCTYPE html>\n<html lang="ko">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n${fontLink}<title>${esc(state.fileName)}</title>\n</head>\n<body style="margin:0;background:${state.opts.bg};">\n${body}\n</body>\n</html>\n`;
   saveFile(page, `${state.fileName}_변환.html`, 'text/html');
 }
@@ -1342,7 +1629,7 @@ function init() {
   if (Array.isArray(fonts)) state.userFonts = fonts.filter((f) => f && f.id && f.name && FONT_GROUPS[f.group]);
   // 예전 '직접 입력' 글꼴은 내 글꼴로 옮긴다
   if (state.opts.fontFamily === 'custom') {
-    const f = addUserFont(state.opts.fontCustom, 'gothic', false);
+    const f = addUserFont(state.opts.fontCustom, 'gothic');
     state.opts.fontFamily = f ? f.id : '';
     saveJSON(OPT_KEY, state.opts);
   }
@@ -1365,6 +1652,9 @@ function init() {
   $('#downloadBtn').addEventListener('click', download);
   $('#copyBtn').addEventListener('click', copyCode);
   $('#txtBtn').addEventListener('click', downloadTxt);
+  document.querySelectorAll('[data-settings-save]').forEach((b) => b.addEventListener('click', exportSettings));
+  $('#settingsInput').addEventListener('change', (e) => { importSettings(e.target.files[0]); e.target.value = ''; });
+  document.querySelectorAll('[data-settings-load]').forEach((b) => b.addEventListener('click', () => $('#settingsInput').click()));
   document.querySelectorAll('#charFilter [data-f]').forEach((b) => b.addEventListener('click', () => {
     state.charFilter = b.dataset.f;
     applyCharFilter();
