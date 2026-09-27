@@ -21,10 +21,10 @@
     <section id="step1" class="step">
       <div class="card">
         <h2>로그 HTML 불러오기</h2>
-        <p class="hint">코코포리아에서 내보낸 로그 파일(.html)을 올리거나, 파일 내용을 그대로 붙여넣으세요.</p>
+        <p class="hint">코코포리아에서 내보낸 로그 파일(.html)을 올리거나, 파일 내용을 그대로 붙여넣으십시오.</p>
         <label class="drop" id="drop">
           <input type="file" id="fileInput" accept=".html,.htm,text/html" hidden />
-          <span>여기를 눌러 파일을 고르거나, 파일을 끌어다 놓으세요</span>
+          <span>여기를 눌러 파일을 고르거나, 파일을 끌어다 놓으십시오</span>
         </label>
         <textarea id="pasteInput" rows="10" placeholder="또는 HTML 내용을 여기에 붙여넣기…"></textarea>
         <div class="actions">
@@ -43,8 +43,19 @@
       <div class="card">
         <h2>화자 분류</h2>
         <p class="hint">
-          <b>인물</b>은 왼쪽에 얼굴, 오른쪽에 이름과 대사가 나와요. <b>굵은 지문</b>/<b>얇은 지문</b>은 이름 없이 가운데 정렬로 나오고, <b>제외</b>하면 출력하지 않아요.
+          분류 카드를 누르면 글자 크기, 글자 모양, 괄호 색 같은 모양을 바꿀 수 있습니다. <b>인물형</b>은 왼쪽에 얼굴, 오른쪽에 이름과 대사가 나오고, <b>지문형</b>은 대사만 나옵니다. 화자마다 드롭다운에서 분류를 고르고, <b>제외</b>를 고르면 출력하지 않습니다.
         </p>
+        <div id="typeCards" class="type-cards"></div>
+        <div id="typePanel" class="type-panel" hidden></div>
+        <div class="list-head">
+          <h3 class="sub">화자</h3>
+          <div class="filter-tabs" id="charFilter">
+            <button data-f="all">전체 <span class="n"></span></button>
+            <button data-f="char" title="인물형 분류를 고른 화자">화자 <span class="n"></span></button>
+            <button data-f="narr" title="지문형 분류를 고른 화자">지문 <span class="n"></span></button>
+            <button data-f="skip">제외 <span class="n"></span></button>
+          </div>
+        </div>
         <div id="charList" class="char-list"></div>
         <div class="actions">
           <button class="ghost" data-go="1">← 이전</button>
@@ -73,7 +84,7 @@
             <label>배경 <input type="color" id="o-bg" /></label>
             <label>대사 <input type="color" id="o-text" /></label>
             <label>지문 <input type="color" id="o-narr" /></label>
-            <label>괄호 <input type="color" id="o-dim" /></label>
+            <label title="분류 설정에서 괄호 색을 따로 고르지 않았을 때 쓰는 색">괄호 <input type="color" id="o-dim" /></label>
             <label>구분선 <input type="color" id="o-line" /></label>
           </div>
           <div class="opt">
@@ -84,8 +95,11 @@
             </select>
           </div>
           <div class="opt">
-            <label>얼굴 크기 <span id="o-avatarVal"></span></label>
-            <input type="range" id="o-avatar" min="20" max="100" step="4" />
+            <label for="o-avatarNum">얼굴 크기</label>
+            <div class="range-num">
+              <input type="range" id="o-avatar" min="20" max="100" step="4" />
+              <span class="num"><input type="number" id="o-avatarNum" step="1" /> px</span>
+            </div>
           </div>
           <div class="opt">
             <label>얼굴 모서리</label>
@@ -96,27 +110,82 @@
             </select>
           </div>
           <div class="opt">
-            <label>글자 크기 <span id="o-fontVal"></span></label>
-            <input type="range" id="o-font" min="4" max="20" step="1" />
+            <label for="o-fontNum">글자 크기</label>
+            <div class="range-num">
+              <input type="range" id="o-font" min="4" max="20" step="1" />
+              <span class="num"><input type="number" id="o-fontNum" step="0.5" /> px</span>
+            </div>
           </div>
+          <div class="opt">
+            <label for="o-fontFamily">글꼴</label>
+            <div class="font-row">
+              <select id="o-fontFamily"></select>
+              <button class="small" id="fontAddBtn">+ 글꼴 추가</button>
+            </div>
+            <div id="fontAdd" class="font-add" hidden>
+              <input type="text" id="fontAddName" maxlength="60" placeholder="글꼴 이름 (예: 나눔스퀘어, KoPubWorld바탕체)" />
+              <div class="font-add-row">
+                <label>종류 <select id="fontAddGroup"></select></label>
+                <label class="chk"><input type="checkbox" id="fontAddWeb" /> 구글 폰트에서 불러오기</label>
+              </div>
+              <p class="hint small tight">종류는 그 글꼴이 없는 컴퓨터에서 대신 보여 줄 모양입니다. 구글 폰트는 fonts.google.com에 적힌 이름 그대로 넣으십시오.</p>
+              <div class="actions">
+                <button class="small ghost" id="fontAddCancel">취소</button>
+                <button class="small primary" id="fontAddOk">추가</button>
+              </div>
+            </div>
+            <div id="userFonts" class="user-fonts"></div>
+            <div id="fontSample" class="font-sample">가나다라 ABC 123 · 예시 대사입니다.</div>
+            <p class="hint small tight">보는 사람의 컴퓨터에 그 글꼴이 있어야 보입니다. 없으면 같은 종류의 기본 글꼴로 나옵니다.</p>
+            <p class="hint small tight" id="o-fontNote" hidden>이 글꼴은 <b>HTML 파일 다운로드</b>에는 함께 들어가지만, 복사한 코드는 에디터가 글꼴을 지원해야 보입니다.</p>
+          </div>
+          <p class="hint small tight">대사·지문·괄호 색은 기본색입니다. 분류마다 다른 색을 쓰려면 2단계 분류 설정에서 고르십시오.</p>
           <div class="opt checks">
             <label><input type="checkbox" id="o-merge" /> 연속된 같은 인물 대사 합치기</label>
-            <label><input type="checkbox" id="o-dimParen" /> 대사 속 (괄호) 흐리게</label>
             <label><input type="checkbox" id="o-dice" /> 판정 결과를 표로 보기</label>
             <label><input type="checkbox" id="o-divider" /> 메시지 사이 구분선</label>
           </div>
           <div class="actions col">
             <button class="primary" id="downloadBtn">HTML 파일 다운로드</button>
-            <button id="copyBtn">에디터용 코드 복사</button>
+            <button id="copyBtn">HTML 코드 복사</button>
+            <button id="txtBtn">HTML txt 다운로드</button>
             <button class="ghost" data-go="2">← 화자 분류로</button>
           </div>
           <p class="hint small">
-            복사한 코드는 에디터의 <b>HTML 모드</b>에 붙여넣으세요. 이미지를 파일로 올렸다면 코드 안에 이미지가 직접 들어가요(data URI). 에디터가 이런 이미지를 막으면 2단계에서 이미지 <b>주소(URL)</b>를 쓰세요.
+            복사한 코드는 에디터의 <b>HTML 모드</b>에 붙여넣으십시오. 이미지를 파일로 올렸다면 코드 안에 이미지가 직접 들어갑니다(data URI). 에디터가 이런 이미지를 막으면 2단계에서 이미지 <b>주소(URL)</b>를 쓰십시오.
           </p>
         </aside>
         <div class="card preview-wrap">
-          <h2>미리보기 <span id="stats" class="hint"></span></h2>
+          <div class="tabs">
+            <button class="tab active" data-tab="preview">미리보기</button>
+            <button class="tab" data-tab="edit">대사 수정</button>
+            <span id="stats" class="hint"></span>
+          </div>
           <div id="preview" class="preview"></div>
+          <div id="editor" hidden>
+            <div class="editor-bar">
+              <input type="search" id="editSearch" placeholder="대사나 이름으로 찾기" />
+              <select id="editFilter">
+                <option value="all">전체</option>
+                <option value="edited">고친 것만</option>
+                <option value="deleted">삭제한 것만</option>
+              </select>
+              <button class="small ghost" id="editReset">모두 되돌리기</button>
+            </div>
+            <div class="rt-toolbar" id="rtBar">
+              <button class="rt-btn" data-cmd="bold" title="굵게 (Ctrl+B)"><b>B</b></button>
+              <button class="rt-btn" data-cmd="italic" title="기울임 (Ctrl+I)"><i>I</i></button>
+              <button class="rt-btn" data-cmd="underline" title="밑줄 (Ctrl+U)"><u>U</u></button>
+              <button class="rt-btn" data-cmd="strikeThrough" title="취소선"><s>S</s></button>
+              <span class="rt-sep"></span>
+              <input type="color" id="rtColor" value="#e03131" title="글자색 고르기" />
+              <button class="rt-btn" data-cmd="foreColor" title="고른 글자색 칠하기">글자색</button>
+              <button class="rt-btn" data-cmd="removeFormat" title="고른 글자의 서식 지우기">서식 지우기</button>
+              <span class="rt-hint">글자를 드래그해 고른 뒤 누르십시오</span>
+            </div>
+            <p class="hint small">대사를 바로 고치면 출력에 반영됩니다. <b>삭제</b>한 대사는 출력에서 빠지고, <b>되살리기</b>로 다시 넣을 수 있습니다. 2단계에서 <b>제외</b>한 화자의 대사는 여기 나오지 않습니다.</p>
+            <div id="editList" class="edit-list"></div>
+          </div>
         </div>
       </div>
     </section>
